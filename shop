@@ -1,0 +1,836 @@
+import { useState } from 'react';
+
+// Main App component
+export default function App() {
+  // Mock product data in Thai
+  const initialProducts = [
+    { id: 1, name: "เสื้อยืดสไตล์มินิมอล", price: 299, image: "https://placehold.co/400x300/a855f7/ffffff?text=Product+1", sizes: "S,M,L,XL" },
+    { id: 2, name: "กางเกงยีนส์ขาตรง", price: 850, image: "https://placehold.co/400x300/ec4899/ffffff?text=Product+2", sizes: "28,30,32,34" },
+    { id: 3, name: "รองเท้าผ้าใบสีขาว", price: 1200, image: "https://placehold.co/400x300/22d3ee/ffffff?text=Product+3", sizes: "38,39,40,41,42" },
+    { id: 4, name: "กระเป๋าสะพายข้าง", price: 590, image: "https://placehold.co/400x300/6366f1/ffffff?text=Product+4", sizes: "One Size" },
+    { id: 5, name: "หมวกแก๊ปเรียบๆ", price: 150, image: "https://placehold.co/400x300/f59e0b/ffffff?text=Product+5", sizes: "One Size" },
+    { id: 6, name: "แว่นตากันแดด", price: 350, image: "https://placehold.co/400x300/4ade80/ffffff?text=Product+6", sizes: "One Size" },
+  ];
+
+  // State for the products list
+  const [products, setProducts] = useState(initialProducts);
+  // State for the shopping cart
+  const [cart, setCart] = useState([]);
+  // State to control the visibility of the cart modal
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  // State for the new product form
+  const [newProduct, setNewProduct] = useState({ name: '', price: '', image: '', sizes: '' });
+  // State to handle the login status
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // State to control the visibility of the login modal
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  // State for the product being edited
+  const [editingProduct, setEditingProduct] = useState(null);
+  // State for additional fees
+  const [fees, setFees] = useState([
+    { id: 1, name: "ค่าจัดส่ง", price: 50 },
+    { id: 2, name: "ค่าธรรมเนียมการชำระเงิน", price: 20 },
+  ]);
+  // State for a new fee
+  const [newFee, setNewFee] = useState({ name: '', price: '' });
+  // State for user contact information
+  const [contactInfo, setContactInfo] = useState({ name: '', address: '', phone: '' });
+
+  // State for payment methods
+  const [paymentMethods, setPaymentMethods] = useState([
+    { id: 1, type: "bank", name: "กสิกรไทย", accountNumber: "123-4-56789-0", qrCodeUrl: "https://placehold.co/300x300/008000/ffffff?text=QR+Code+KBank" },
+  ]);
+  // State for new payment method form
+  const [newPaymentMethod, setNewPaymentMethod] = useState({ type: 'bank', name: '', accountNumber: '', qrCodeUrl: '' });
+  // State for selected payment method in the cart
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+  // State for the uploaded payment slip
+  const [paymentSlipFile, setPaymentSlipFile] = useState(null);
+  // State for checkout status message
+  const [checkoutStatus, setCheckoutStatus] = useState(null);
+  // State for the size and quantity selection modal
+  const [sizeModal, setSizeModal] = useState({ isOpen: false, product: null, selectedSize: '', quantity: 1 });
+
+  // Your Google Apps Script Web App URL and Google Sheet ID
+  const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby4SAqqhDzjCKev-BkphRkSLn1YMm9zgPlfvTRh4m6tRXdxZ8KT1uE4_OFu7nCuTwtvfA/exec";
+  const GOOGLE_SHEET_ID = "1pV1zbjJiD3Zk8JnF0TQXBn0ope7UbbXTr49BpW_QRo";
+
+  // Function to handle the "Add to Cart" button click
+  const handleAddToCartClick = (product) => {
+    // If the product has sizes, open the size selection modal
+    if (product.sizes && product.sizes !== 'One Size') {
+      setSizeModal({ isOpen: true, product, selectedSize: product.sizes.split(',')[0], quantity: 1 });
+    } else {
+      // Otherwise, add the product directly to the cart
+      addToCart(product, 'One Size', 1);
+    }
+  };
+
+  // Function to add a product to the cart with a specific size and quantity
+  const addToCart = (product, size, quantity) => {
+    // We create a unique ID for each cart item based on product ID and size
+    const cartItemId = `${product.id}-${size}`;
+
+    setCart((prevCart) => {
+      // Check if the product with this size is already in the cart
+      const existingProduct = prevCart.find((item) => item.cartItemId === cartItemId);
+      if (existingProduct) {
+        // If it exists, increase the quantity
+        return prevCart.map((item) =>
+          item.cartItemId === cartItemId ? { ...item, quantity: item.quantity + quantity } : item
+        );
+      } else {
+        // If it's a new product with this size, add it with the specified quantity
+        return [...prevCart, { ...product, cartItemId, quantity, selectedSize: size }];
+      }
+    });
+    // Close the size and quantity selection modal after adding to cart
+    setSizeModal({ isOpen: false, product: null, selectedSize: '', quantity: 1 });
+  };
+
+  // Function to update item quantity in the cart
+  const updateCartItemQuantity = (cartItemId, newQuantity) => {
+    if (newQuantity < 1) return;
+    setCart((prevCart) =>
+      prevCart.map((item) =>
+        item.cartItemId === cartItemId ? { ...item, quantity: newQuantity } : item
+      )
+    );
+  };
+
+  // Function to remove an item from the cart
+  const removeFromCart = (cartItemId) => {
+    setCart((prevCart) => prevCart.filter((item) => item.cartItemId !== cartItemId));
+  };
+
+  // Function to calculate the total price of all items in the cart, including fees
+  const calculateTotal = () => {
+    const productTotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
+    const feesTotal = fees.reduce((total, fee) => total + fee.price, 0);
+    return productTotal + feesTotal;
+  };
+
+  // Function to handle form input changes for new product
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewProduct({ ...newProduct, [name]: value });
+  };
+
+  // Function to handle form input changes for editing product
+  const handleEditInputChange = (e) => {
+    const { name, value } = e.target;
+    setEditingProduct({ ...editingProduct, [name]: value });
+  };
+  
+  // Function to add a new product or update an existing one
+  const handleSubmitProduct = (e) => {
+    e.preventDefault();
+    if (editingProduct) {
+      // Update an existing product
+      setProducts(products.map(p => p.id === editingProduct.id ? editingProduct : p));
+      setEditingProduct(null);
+    } else {
+      // Add a new product
+      if (newProduct.name && newProduct.price) {
+        const newId = products.length > 0 ? Math.max(...products.map(p => p.id)) + 1 : 1;
+        const productToAdd = {
+          id: newId,
+          name: newProduct.name,
+          price: Number(newProduct.price),
+          image: newProduct.image || `https://placehold.co/400x300/cccccc/333333?text=${encodeURIComponent(newProduct.name)}`,
+          sizes: newProduct.sizes || "One Size"
+        };
+        setProducts([...products, productToAdd]);
+        setNewProduct({ name: '', price: '', image: '', sizes: '' }); // Clear the form
+      }
+    }
+  };
+
+  // Function to remove a single product from the list
+  const removeProduct = (productId) => {
+    setProducts((prevProducts) => prevProducts.filter((product) => product.id !== productId));
+  };
+
+  // Function to set a product for editing
+  const startEditingProduct = (product) => {
+    setEditingProduct({ ...product });
+  };
+
+  // Function to handle input for new fee
+  const handleFeeInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewFee({ ...newFee, [name]: value });
+  };
+
+  // Function to add a new fee
+  const addFee = (e) => {
+    e.preventDefault();
+    if (newFee.name && newFee.price) {
+      const newId = fees.length > 0 ? Math.max(...fees.map(f => f.id)) + 1 : 1;
+      setFees([...fees, { id: newId, name: newFee.name, price: Number(newFee.price) }]);
+      setNewFee({ name: '', price: '' });
+    }
+  };
+
+  // Function to remove a fee
+  const removeFee = (feeId) => {
+    setFees(fees.filter(fee => fee.id !== feeId));
+  };
+
+  // Function to handle contact info input changes
+  const handleContactInfoChange = (e) => {
+    const { name, value } = e.target;
+    setContactInfo({ ...contactInfo, [name]: value });
+  };
+
+  // Function to handle new payment method input change
+  const handleNewPaymentMethodChange = (e) => {
+    const { name, value } = e.target;
+    setNewPaymentMethod({ ...newPaymentMethod, [name]: value });
+  };
+
+  // Function to add a new payment method
+  const handleAddPaymentMethod = (e) => {
+    e.preventDefault();
+    if (newPaymentMethod.name && (newPaymentMethod.accountNumber || newPaymentMethod.qrCodeUrl)) {
+      const newId = paymentMethods.length > 0 ? Math.max(...paymentMethods.map(p => p.id)) + 1 : 1;
+      setPaymentMethods([...paymentMethods, { ...newPaymentMethod, id: newId, price: Number(newPaymentMethod.price) }]);
+      setNewPaymentMethod({ type: 'bank', name: '', accountNumber: '', qrCodeUrl: '' });
+    }
+  };
+
+  // Function to remove a payment method
+  const handleRemovePaymentMethod = (id) => {
+    setPaymentMethods(paymentMethods.filter(p => p.id !== id));
+  };
+
+  // Function to handle slip upload
+  const handleSlipUpload = (e) => {
+    const file = e.target.files[0];
+    setPaymentSlipFile(file);
+  };
+  
+  // Function to handle checkout process and send data to Google Sheets
+  const handleCheckout = async () => {
+    if (cart.length === 0 || !selectedPaymentMethod || !contactInfo.name || !contactInfo.address || !contactInfo.phone) {
+      setCheckoutStatus({ type: 'error', message: 'กรุณากรอกข้อมูลให้ครบถ้วนและเลือกวิธีการชำระเงิน' });
+      return;
+    }
+
+    if (GOOGLE_APPS_SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+      setCheckoutStatus({ type: 'error', message: 'กรุณาตั้งค่า Google Apps Script URL ก่อนครับ' });
+      return;
+    }
+
+    setCheckoutStatus({ type: 'loading', message: 'กำลังดำเนินการ...' });
+    
+    // Create an order object
+    const orderData = {
+      orderId: `ORD-${Date.now()}`,
+      items: cart,
+      total: calculateTotal(),
+      fees: fees,
+      paymentMethod: selectedPaymentMethod,
+      contactInfo: contactInfo,
+      paymentSlip: paymentSlipFile ? paymentSlipFile.name : 'ไม่มีสลิป',
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // We send the order data as JSON in the body of the request
+        body: JSON.stringify(orderData),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.status === 'success') {
+        setCheckoutStatus({ type: 'success', message: 'คำสั่งซื้อของคุณสำเร็จแล้ว! ข้อมูลถูกบันทึกเรียบร้อย' });
+        
+        // Clear the cart and reset states after successful checkout
+        setCart([]);
+        setSelectedPaymentMethod(null);
+        setPaymentSlipFile(null);
+        setContactInfo({ name: '', address: '', phone: '' });
+      } else {
+        // Handle API errors
+        console.error("API error:", result.message);
+        setCheckoutStatus({ type: 'error', message: 'เกิดข้อผิดพลาดในการบันทึกคำสั่งซื้อ: ' + result.message });
+      }
+    } catch (error) {
+      // Handle network or other fetch errors
+      console.error("Network error:", error);
+      setCheckoutStatus({ type: 'error', message: 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง' });
+    }
+  };
+
+  // Login component within App
+  const LoginModal = () => {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+
+    const handleLogin = (e) => {
+      e.preventDefault();
+      // Hardcoded credentials for demonstration
+      if (username === 'lamtoey728' && password === 'E99h9999') {
+        setIsLoggedIn(true);
+        setIsLoginModalOpen(false);
+        setError('');
+      } else {
+        setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+        <div className="bg-white p-8 rounded-xl shadow-lg max-w-sm w-full mx-4">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold">เข้าสู่ระบบ</h2>
+            <button onClick={() => setIsLoginModalOpen(false)} className="text-gray-500 hover:text-gray-800 text-3xl font-bold">
+              &times;
+            </button>
+          </div>
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            <input
+              type="text"
+              placeholder="ชื่อผู้ใช้"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <input
+              type="password"
+              placeholder="รหัสผ่าน"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {error && <p className="text-red-500 text-center">{error}</p>}
+            <button
+              type="submit"
+              className="bg-indigo-500 text-white py-3 rounded-lg font-bold shadow-md hover:bg-indigo-600 transition-colors"
+            >
+              เข้าสู่ระบบ
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // Size and Quantity Selection Modal
+  const SizeModal = () => {
+    const { product, selectedSize, quantity } = sizeModal;
+    const availableSizes = product.sizes.split(',');
+
+    return (
+      <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+        <div className="bg-white p-8 rounded-xl shadow-lg max-w-sm w-full mx-4">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold">เลือกขนาด: {product.name}</h2>
+            <button onClick={() => setSizeModal({ ...sizeModal, isOpen: false })} className="text-gray-500 hover:text-gray-800 text-3xl font-bold">
+              &times;
+            </button>
+          </div>
+          <div className="mb-6">
+            <h3 className="font-semibold mb-2">ขนาด</h3>
+            <div className="grid grid-cols-3 gap-4">
+              {availableSizes.map(size => (
+                <button
+                  key={size}
+                  onClick={() => setSizeModal({ ...sizeModal, selectedSize: size })}
+                  className={`p-3 rounded-lg border-2 font-bold transition-colors ${selectedSize === size ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-gray-200 text-gray-800 border-gray-300 hover:bg-gray-300'}`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mb-6">
+            <h3 className="font-semibold mb-2">จำนวน</h3>
+            <input
+              type="number"
+              min="1"
+              value={quantity}
+              onChange={(e) => setSizeModal({ ...sizeModal, quantity: parseInt(e.target.value) || 1 })}
+              className="w-full p-3 border border-gray-300 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <button
+            onClick={() => addToCart(product, selectedSize, quantity)}
+            disabled={!selectedSize}
+            className="w-full bg-indigo-500 text-white py-3 rounded-lg font-bold shadow-md hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ยืนยันและเพิ่มลงตะกร้า
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-gray-100 min-h-screen text-gray-800 font-sans">
+      {/* Header section with a navigation bar */}
+      <header className="bg-white shadow-sm sticky top-0 z-50">
+        <nav className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="text-2xl font-bold text-indigo-600">
+            Happy Shop
+          </div>
+          <div className="flex items-center gap-4">
+            {isLoggedIn ? (
+              <button
+                onClick={() => setIsLoggedIn(false)}
+                className="px-4 py-2 rounded-lg bg-red-500 text-white shadow-md hover:bg-red-600 transition-colors"
+              >
+                ออกจากระบบ
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsLoginModalOpen(true)}
+                className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 shadow-md hover:bg-gray-300 transition-colors"
+              >
+                เข้าสู่ระบบ
+              </button>
+            )}
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="relative px-4 py-2 rounded-lg bg-indigo-600 text-white shadow-md hover:bg-indigo-700 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6 inline-block"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.182 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+                />
+              </svg>
+              <span className="ml-2">ตะกร้าสินค้า</span>
+              {/* Display the number of items in the cart */}
+              {cart.length > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                  {cart.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </nav>
+      </header>
+
+      {/* Main product display section */}
+      <main className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold text-center mb-8">สินค้าทั้งหมด</h1>
+        
+        {/* Product Management Section, only visible when logged in */}
+        {isLoggedIn && (
+          <div className="mb-8 p-6 bg-white rounded-xl shadow-md">
+            <h2 className="text-2xl font-bold mb-4">จัดการสินค้า</h2>
+            <form onSubmit={handleSubmitProduct} className="flex flex-col sm:flex-row gap-4 mb-4">
+              <input
+                type="text"
+                name="name"
+                value={editingProduct ? editingProduct.name : newProduct.name}
+                onChange={editingProduct ? handleEditInputChange : handleInputChange}
+                placeholder="ชื่อสินค้า"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+              <input
+                type="number"
+                name="price"
+                value={editingProduct ? editingProduct.price : newProduct.price}
+                onChange={editingProduct ? handleEditInputChange : handleInputChange}
+                placeholder="ราคา"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+              <input
+                type="text"
+                name="sizes"
+                value={editingProduct ? editingProduct.sizes : newProduct.sizes}
+                onChange={editingProduct ? handleEditInputChange : handleInputChange}
+                placeholder="ขนาด (เช่น: S,M,L)"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <input
+                type="text"
+                name="image"
+                value={editingProduct ? editingProduct.image : newProduct.image}
+                onChange={editingProduct ? handleEditInputChange : handleInputChange}
+                placeholder="URL รูปภาพ (ไม่บังคับ)"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                type="submit"
+                className="bg-indigo-500 text-white py-2 px-4 rounded-lg font-bold shadow-md hover:bg-indigo-600 transition-colors"
+              >
+                {editingProduct ? 'บันทึกการแก้ไข' : 'เพิ่มสินค้า'}
+              </button>
+              {editingProduct && (
+                <button
+                  type="button"
+                  onClick={() => setEditingProduct(null)}
+                  className="bg-gray-400 text-white py-2 px-4 rounded-lg font-bold shadow-md hover:bg-gray-500 transition-colors"
+                >
+                  ยกเลิก
+                </button>
+              )}
+            </form>
+
+            <h3 className="text-xl font-semibold mt-6 mb-2">ลบ/แก้ไขสินค้า</h3>
+            <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+              {products.map((product) => (
+                <li key={product.id} className="p-4 flex justify-between items-center">
+                  <span className="font-medium">{product.name}</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => startEditingProduct(product)}
+                      className="bg-blue-500 text-white px-3 py-1 rounded-lg font-bold hover:bg-blue-600 transition-colors"
+                    >
+                      แก้ไข
+                    </button>
+                    <button
+                      onClick={() => removeProduct(product.id)}
+                      className="bg-red-500 text-white px-3 py-1 rounded-lg font-bold hover:bg-red-600 transition-colors"
+                    >
+                      ลบ
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <h2 className="text-2xl font-bold mt-8 mb-4">จัดการค่าบริการ</h2>
+            <form onSubmit={addFee} className="flex flex-col sm:flex-row gap-4 mb-4">
+              <input
+                type="text"
+                name="name"
+                value={newFee.name}
+                onChange={handleFeeInputChange}
+                placeholder="ชื่อค่าบริการ"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+              <input
+                type="number"
+                name="price"
+                value={newFee.price}
+                onChange={handleFeeInputChange}
+                placeholder="ราคา"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+              <button
+                type="submit"
+                className="bg-green-500 text-white py-2 px-4 rounded-lg font-bold shadow-md hover:bg-green-600 transition-colors"
+              >
+                เพิ่มค่าบริการ
+              </button>
+            </form>
+            <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+              {fees.map((fee) => (
+                <li key={fee.id} className="p-4 flex justify-between items-center">
+                  <span className="font-medium">{fee.name}</span>
+                  <span className="text-gray-600">{fee.price} บาท</span>
+                  <button
+                    onClick={() => removeFee(fee.id)}
+                    className="bg-red-500 text-white px-3 py-1 rounded-lg font-bold hover:bg-red-600 transition-colors"
+                  >
+                    ลบ
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {/* Payment Management Section */}
+            <h2 className="text-2xl font-bold mt-8 mb-4">จัดการการชำระเงิน</h2>
+            <form onSubmit={handleAddPaymentMethod} className="flex flex-col sm:flex-row gap-4 mb-4">
+              <input
+                type="text"
+                name="name"
+                value={newPaymentMethod.name}
+                onChange={handleNewPaymentMethodChange}
+                placeholder="ชื่อธนาคาร / วิธีชำระเงิน"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+              <input
+                type="text"
+                name="accountNumber"
+                value={newPaymentMethod.accountNumber}
+                onChange={handleNewPaymentMethodChange}
+                placeholder="เลขบัญชี (ไม่บังคับ)"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <input
+                type="text"
+                name="qrCodeUrl"
+                value={newPaymentMethod.qrCodeUrl}
+                onChange={handleNewPaymentMethodChange}
+                placeholder="URL รูปภาพ QR Code (ไม่บังคับ)"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                type="submit"
+                className="bg-blue-500 text-white py-2 px-4 rounded-lg font-bold shadow-md hover:bg-blue-600 transition-colors"
+              >
+                เพิ่มบัญชี
+              </button>
+            </form>
+            <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+              {paymentMethods.map((method) => (
+                <li key={method.id} className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                  <div className="flex flex-col">
+                    <span className="font-medium">{method.name}</span>
+                    <span className="text-sm text-gray-600">{method.accountNumber}</span>
+                  </div>
+                  <button
+                    onClick={() => handleRemovePaymentMethod(method.id)}
+                    className="mt-2 sm:mt-0 bg-red-500 text-white px-3 py-1 rounded-lg font-bold hover:bg-red-600 transition-colors"
+                  >
+                    ลบ
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+  
+        {/* Product List */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {products.map((product) => (
+            <div
+              key={product.id}
+              className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow overflow-hidden"
+            >
+              <img
+                src={product.image}
+                alt={product.name}
+                className="w-full h-56 object-cover"
+              />
+              <div className="p-6">
+                <h2 className="text-xl font-semibold mb-2">{product.name}</h2>
+                <p className="text-gray-600 mb-4">
+                  ราคา: {product.price} บาท
+                </p>
+                <button
+                  onClick={() => handleAddToCartClick(product)}
+                  className="w-full bg-indigo-500 text-white py-2 rounded-lg font-bold shadow-md hover:bg-indigo-600 transition-colors"
+                >
+                  {product.sizes !== 'One Size' ? 'เลือกขนาด' : 'เพิ่มลงตะกร้า'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+
+      {/* Login Modal */}
+      {isLoginModalOpen && <LoginModal />}
+
+      {/* Shopping Cart Modal */}
+      {isCartOpen && (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">ตะกร้าสินค้า</h2>
+              <button onClick={() => setIsCartOpen(false)} className="text-gray-500 hover:text-gray-800 text-3xl font-bold">
+                &times;
+              </button>
+            </div>
+            {cart.length === 0 ? (
+              <p className="text-center text-gray-500">
+                ยังไม่มีสินค้าในตะกร้า
+              </p>
+            ) : (
+              <div>
+                <ul className="divide-y divide-gray-200 max-h-60 overflow-y-auto mb-4">
+                  {cart.map((item) => (
+                    <li key={item.cartItemId} className="py-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="w-16 h-16 object-cover rounded-lg"
+                        />
+                        <div>
+                          <p className="font-semibold">{item.name}</p>
+                          <p className="text-sm text-gray-500">
+                            ขนาด: {item.selectedSize}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            ราคาต่อหน่วย: {item.price} บาท
+                          </p>
+                          <div className="flex items-center mt-2">
+                            <button
+                              onClick={() => updateCartItemQuantity(item.cartItemId, item.quantity - 1)}
+                              className="bg-gray-200 text-gray-800 rounded-l-lg px-3 py-1 font-bold hover:bg-gray-300"
+                            >
+                              -
+                            </button>
+                            <span className="bg-gray-100 px-4 py-1 border-y border-gray-300">
+                              {item.quantity}
+                            </span>
+                            <button
+                              onClick={() => updateCartItemQuantity(item.cartItemId, item.quantity + 1)}
+                              className="bg-gray-200 text-gray-800 rounded-r-lg px-3 py-1 font-bold hover:bg-gray-300"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="font-semibold text-lg">{item.price * item.quantity} บาท</p>
+                    </li>
+                  ))}
+                </ul>
+                
+                {/* Fees section in cart */}
+                {fees.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-dashed border-gray-300">
+                    <h3 className="text-lg font-semibold mb-2">ค่าบริการเพิ่มเติม:</h3>
+                    <ul className="mb-2">
+                      {fees.map((fee) => (
+                        <li key={fee.id} className="flex justify-between items-center text-sm text-gray-600 mb-1">
+                          <span>{fee.name}</span>
+                          <span>{fee.price} บาท</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {/* Contact Information Form */}
+                <div className="mt-6 pt-4 border-t border-gray-200">
+                  <h3 className="text-lg font-bold mb-2">ข้อมูลการจัดส่ง</h3>
+                  <div className="flex flex-col gap-3">
+                    <input
+                      type="text"
+                      name="name"
+                      value={contactInfo.name}
+                      onChange={handleContactInfoChange}
+                      placeholder="ชื่อ-นามสกุล"
+                      className="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      required
+                    />
+                    <textarea
+                      name="address"
+                      value={contactInfo.address}
+                      onChange={handleContactInfoChange}
+                      placeholder="ที่อยู่สำหรับจัดส่ง"
+                      rows="3"
+                      className="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      required
+                    ></textarea>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={contactInfo.phone}
+                      onChange={handleContactInfoChange}
+                      placeholder="เบอร์โทรศัพท์"
+                      className="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Payment methods selection */}
+                <div className="mt-6 pt-4 border-t border-gray-200">
+                  <h3 className="text-lg font-bold mb-2">วิธีการชำระเงิน</h3>
+                  <div className="flex flex-col gap-2">
+                    {paymentMethods.map(method => (
+                      <div
+                        key={method.id}
+                        className={`p-4 rounded-lg cursor-pointer transition-all duration-200 ${selectedPaymentMethod?.id === method.id ? 'bg-indigo-100 border-indigo-500 border-2' : 'bg-gray-100 border border-gray-300 hover:bg-gray-200'}`}
+                        onClick={() => setSelectedPaymentMethod(method)}
+                      >
+                        <span className="font-semibold">{method.name}</span>
+                        {method.accountNumber && <p className="text-sm text-gray-600">เลขบัญชี: {method.accountNumber}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Payment details display */}
+                {selectedPaymentMethod && (
+                  <div className="mt-6 p-4 bg-white rounded-xl shadow-inner border border-dashed border-gray-300">
+                    <h4 className="font-bold text-center text-xl mb-2">รายละเอียดการชำระเงิน</h4>
+                    <p className="text-center">โอนเงินไปยัง:</p>
+                    <p className="text-center font-semibold text-lg">{selectedPaymentMethod.name}</p>
+                    {selectedPaymentMethod.accountNumber && (
+                      <p className="text-center text-sm text-gray-600">
+                        เลขบัญชี: <span className="font-mono">{selectedPaymentMethod.accountNumber}</span>
+                      </p>
+                    )}
+                    {selectedPaymentMethod.qrCodeUrl && (
+                      <div className="mt-4 flex justify-center">
+                        <img src={selectedPaymentMethod.qrCodeUrl} alt="QR Code" className="w-48 h-48 rounded-lg border-2 border-gray-200" />
+                      </div>
+                    )}
+                    {/* Payment slip upload section */}
+                    <div className="mt-6">
+                      <p className="text-sm font-semibold mb-1">อัปโหลดสลิปหรือหลักฐานการโอนเงิน:</p>
+                      <input
+                        type="file"
+                        accept="image/*, .pdf"
+                        onChange={handleSlipUpload}
+                        className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100"
+                      />
+                      {paymentSlipFile && (
+                        <p className="text-xs text-green-600 mt-2">ไฟล์ "{paymentSlipFile.name}" แนบเรียบร้อยแล้ว</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="mt-6 border-t pt-4">
+                  <div className="flex justify-between items-center font-bold text-xl">
+                    <span>ยอดรวมทั้งหมด:</span>
+                    <span>{calculateTotal()} บาท</span>
+                  </div>
+                </div>
+
+                {/* Display checkout status messages */}
+                {checkoutStatus && (
+                  <div className={`mt-4 p-4 rounded-lg text-center font-semibold ${checkoutStatus.type === 'success' ? 'bg-green-100 text-green-700' : checkoutStatus.type === 'loading' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                    {checkoutStatus.message}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => {
+                  setIsCartOpen(false);
+                  setCheckoutStatus(null);
+                }}
+                className="bg-gray-300 text-gray-800 py-2 px-4 rounded-lg font-bold hover:bg-gray-400 transition-colors mr-2"
+              >
+                เลือกซื้อสินค้าต่อ
+              </button>
+              <button
+                onClick={handleCheckout}
+                disabled={cart.length === 0 || !selectedPaymentMethod || checkoutStatus?.type === 'loading'}
+                className="bg-green-500 text-white py-2 px-4 rounded-lg font-bold hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {checkoutStatus?.type === 'loading' ? 'กำลังดำเนินการ...' : 'ชำระเงิน'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Render the SizeModal if it's open */}
+      {sizeModal.isOpen && <SizeModal />}
+    </div>
+  );
+}
